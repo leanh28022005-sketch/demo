@@ -6,10 +6,12 @@ integrated with the rest of the motion planning system.
 """
 
 import numpy as np
-import torch
-import mujoco
 import os
+import mujoco
 from pathlib import Path
+
+# Disable CUDA to avoid torch meta registration hanging issues
+os.environ.setdefault('CUDA_VISIBLE_DEVICES', '-1')
 
 
 class G1Walker:
@@ -34,6 +36,10 @@ class G1Walker:
             model: Optional MuJoCo model (will load default if None)
             data: Optional MuJoCo data (will create if None)
         """
+        # Lazy import torch to avoid hanging during meta registration
+        import torch
+        self.torch = torch
+        
         # Paths
         self.base_path = Path(__file__).parent.parent.parent
         self.policy_path = self.base_path / "unitree_rl_gym/deploy/pre_train/g1/motion.pt"
@@ -95,7 +101,7 @@ class G1Walker:
         if not self.policy_path.exists():
             raise FileNotFoundError(f"Policy not found at {self.policy_path}")
         
-        self.policy = torch.jit.load(str(self.policy_path), map_location='cpu')
+        self.policy = self.torch.jit.load(str(self.policy_path), map_location='cpu')
         self.policy.eval()
         
     def reset(self):
@@ -223,8 +229,8 @@ class G1Walker:
         self.obs[9+3*self.num_actions:9+3*self.num_actions+2] = [sin_phase, cos_phase]
         
         # Policy inference
-        with torch.no_grad():
-            obs_tensor = torch.from_numpy(self.obs).unsqueeze(0).float()
+        with self.torch.no_grad():
+            obs_tensor = self.torch.from_numpy(self.obs).unsqueeze(0).float()
             self.action = self.policy(obs_tensor).numpy().squeeze()
         
         # Convert action to joint targets
